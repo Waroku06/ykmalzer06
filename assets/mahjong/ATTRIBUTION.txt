@@ -1,0 +1,2 @@
+牌面素材：mahjong_graphic (https://gitee.com/lietxia_admin/mahjong_graphic)
+素材协议：仓库 LICENSE，允许自由使用、复制、修改和分发。

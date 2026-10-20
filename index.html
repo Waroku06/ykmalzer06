@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14231f">
+  <title>ykmalzer06 / 日麻役满分析器06</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="日麻役满分析器06首页">
+      <span class="brand-mark">06</span>
+      <span><strong>日麻役满分析器06</strong><small>ykmalzer06 · 雀魂规则</small></span>
+    </a>
+    <div class="top-actions">
+      <label class="rule-select"><span>规则</span><select id="player-count"><option value="4">四人麻将</option><option value="3">三人麻将</option></select></label>
+      <label class="mode-toggle"><input id="yakuman-mode" type="checkbox"><span class="toggle-track"></span><span>役满分析</span></label>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="workspace">
+      <div class="section-head">
+        <div><p class="eyebrow">HAND ANALYSIS</p><h1>牌姿分析</h1></div>
+        <button class="icon-button clear-button" id="clear-hand" type="button" title="清空手牌" aria-label="清空手牌"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg></button>
+      </div>
+
+      <div class="tiles-heading"><span>手牌</span><span id="tile-count" class="count-label">0 / 14 张</span></div>
+      <div id="hand-tiles" class="hand-tiles" aria-live="polite"></div>
+
+      <div class="tile-controls">
+        <div class="control-title"><span>添加牌</span><span class="helper-text">点击牌面加入手牌，点击手牌移除</span></div>
+        <div id="tile-palette" class="tile-palette" aria-label="选择麻将牌"></div>
+      </div>
+
+      <div class="settings-grid">
+        <section class="setting-block">
+          <div class="control-title"><span>副露</span><span id="meld-count" class="count-label">0 组</span></div>
+          <div class="meld-form">
+            <select id="meld-kind" aria-label="副露类型"><option value="chi">吃</option><option value="pon">碰</option><option value="kan">大明杠</option><option value="ankan">暗杠</option></select>
+            <select id="meld-tile" aria-label="副露牌"></select>
+            <button id="add-meld" class="small-button" type="button">添加</button>
+          </div>
+          <div id="meld-list" class="meld-list"></div>
+        </section>
+        <section class="setting-block">
+          <div class="control-title"><span>宝牌</span><span class="helper-text">选择手中每种宝牌的张数</span></div>
+          <div id="dora-list" class="dora-list"></div>
+          <div class="dora-picker" id="dora-picker"></div>
+        </section>
+      </div>
+
+      <div class="settings-grid secondary-settings">
+        <section class="setting-block">
+          <div class="control-title"><span>场况</span></div>
+          <div class="select-row">
+            <label><span>场风</span><select id="round-wind"><option value="27">东</option><option value="28">南</option><option value="29">西</option><option value="30">北</option></select></label>
+            <label><span>自风</span><select id="seat-wind"><option value="27">东</option><option value="28">南</option><option value="29">西</option><option value="30">北</option></select></label>
+          </div>
+          <label class="wait-select"><span>和牌形</span><select id="wait-type"><option value="ryanmen">两面 / 默认</option><option value="kanchan">嵌张</option><option value="penchan">边张</option><option value="tanki">单骑</option><option value="shanpon">双碰</option><option value="kokushi13">国士十三面</option><option value="chuuren13">九莲九面</option></select></label>
+        </section>
+        <section class="setting-block sanma-only" id="kita-setting">
+          <div class="control-title"><span>拔北</span><span class="helper-text">每张计 1 番宝牌</span></div>
+          <div class="stepper"><button id="kita-dec" type="button" aria-label="减少拔北">−</button><output id="kita-count">0</output><button id="kita-inc" type="button" aria-label="增加拔北">+</button></div>
+        </section>
+      </div>
+
+      <div class="analyze-row">
+        <div id="input-status" class="input-status">选择手牌以开始分析</div>
+        <button id="analyze" class="primary-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5M8 11h6M11 8v6"/></svg>分析牌姿</button>
+      </div>
+    </section>
+
+    <aside class="results" aria-live="polite">
+      <div class="section-head result-heading">
+        <div><p class="eyebrow">RESULT</p><h2>分析结果</h2></div>
+        <span id="result-state" class="result-state">待分析</span>
+      </div>
+      <div id="result-content" class="result-content">
+        <div class="empty-result"><span class="empty-symbol">?</span><strong>等待牌姿</strong><p>输入 13 或 14 张有效牌后进行分析</p></div>
+      </div>
+      <div class="result-footnote" id="result-note">雀魂常用规则 · 赤宝牌 · 三麻拔北</div>
+    </aside>
+  </main>
+
+  <footer class="app-footer"><span>ykmalzer06 / 日麻役满分析器06</span><a href="assets/mahjong/ATTRIBUTION.txt">牌图素材来源</a></footer>
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

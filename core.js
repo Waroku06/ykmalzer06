@@ -54,6 +54,13 @@
   function copyCounts(counts) { return counts.slice(); }
   function total(counts) { return counts.reduce((sum, n) => sum + n, 0); }
   function allowedTile(id, sanma) { return !(sanma && id >= 1 && id <= 7); }
+  function kitaPhysicalCount(id, sanma, kita) {
+    return sanma && id === 30 ? Math.max(0, kita || 0) : 0;
+  }
+  function kitaDoraHan(options) {
+    if (!options || !options.sanma) return 0;
+    return Math.max(0, options.kita || 0) * ((options.doraCounts && options.doraCounts[30]) || 0);
+  }
   function doraFromIndicator(id, sanma) {
     if (id < 27) {
       if (sanma && id < 9) return id === 0 ? 8 : 0;
@@ -344,10 +351,8 @@
         else add('混全帶么九', closed ? 2 : 1);
       }
       const starts = new Set(sequenceGroups.map(g => g.tiles[0]));
-      if ([0, 1, 2].some(s => starts.has(s * 9)) && [0, 1, 2].some(s => starts.has(s * 9 + 3)) && [0, 1, 2].some(s => starts.has(s * 9 + 6))) {
-        for (let rank = 0; rank < 3; rank++) {
-          if ([0, 1, 2].every(s => starts.has(s * 9 + rank * 3))) { add('一氣通貫', closed ? 2 : 1); break; }
-        }
+      if ([0, 1, 2].some((suit) => [0, 3, 6].every((offset) => starts.has(suit * 9 + offset)))) {
+        add('一氣通貫', closed ? 2 : 1);
       }
       const sequenceRanks = new Map();
       for (const g of sequenceGroups) {
@@ -451,6 +456,7 @@
   function doraHan(counts, melds, options) {
     const physical = addCounts(counts, fixedCounts(melds, false));
     let han = options.sanma ? (options.kita || 0) : 0;
+    han += kitaDoraHan(options);
     for (let id = 0; id < 34; id++) han += physical[id] * (options.doraCounts[id] || 0);
     han += (options.redCount || 0) + melds.reduce((sum, meld) => sum + (meld.redCount || 0), 0);
     if (options.winningRed) han++;
@@ -592,25 +598,28 @@
   }
   function isComplete(counts, melds, sanma) { return winningDecompositions(counts, melds, sanma).length > 0; }
 
-  function regularUkeire(counts, melds, sanma, baseShanten, visibleCounts = []) {
+  function regularUkeire(counts, melds, sanma, baseShanten, visibleCounts = [], kita = 0) {
     const items = [];
     const fixed = fixedCounts(melds, false);
     for (let id = 0; id < 34; id++) {
       const visible = visibleCounts[id] || 0;
-      if (!allowedTile(id, sanma) || counts[id] + fixed[id] + visible >= 4) continue;
+      const kitaCopies = kitaPhysicalCount(id, sanma, kita);
+      if (!allowedTile(id, sanma) || counts[id] + fixed[id] + visible + kitaCopies >= 4) continue;
       const next = addGroup(counts, [id]);
-      if (isComplete(next, melds, sanma) || shanten(next, melds.length, sanma) < baseShanten) items.push({ id, remaining: 4 - counts[id] - fixed[id] - visible });
+      if (isComplete(next, melds, sanma) || shanten(next, melds.length, sanma) < baseShanten) {
+        items.push({ id, remaining: 4 - counts[id] - fixed[id] - visible - kitaCopies });
+      }
     }
     return items;
   }
-  function effectiveShanten(counts, melds, sanma, visibleCounts = []) {
+  function effectiveShanten(counts, melds, sanma, visibleCounts = [], kita = 0) {
     const value = shanten(counts, melds.length, sanma);
     if (value !== 0 || total(counts) + melds.length * 3 !== 13) return value;
-    const liveWait = regularUkeire(counts, melds, sanma, value, visibleCounts)
+    const liveWait = regularUkeire(counts, melds, sanma, value, visibleCounts, kita)
       .some((draw) => isComplete(addGroup(counts, [draw.id]), melds, sanma));
     return liveWait ? value : 1;
   }
-  function bestDiscards(tiles, melds, sanma, visibleCounts = []) {
+  function bestDiscards(tiles, melds, sanma, visibleCounts = [], kita = 0) {
     const counts = countsFromTiles(tiles);
     let best = Infinity;
     const options = [];
@@ -621,21 +630,22 @@
       const next = copyCounts(counts); next[tile.id]--;
       const nextVisible = visibleCounts.slice();
       nextVisible[tile.id] = (nextVisible[tile.id] || 0) + 1;
-      const value = effectiveShanten(next, melds, sanma, nextVisible);
+      const value = effectiveShanten(next, melds, sanma, nextVisible, kita);
       if (value < best) { best = value; options.length = 0; }
-      if (value === best) options.push({ id: tile.id, shanten: value, ukeire: regularUkeire(next, melds, sanma, value, nextVisible) });
+      if (value === best) options.push({ id: tile.id, shanten: value, ukeire: regularUkeire(next, melds, sanma, value, nextVisible, kita) });
     }
     options.sort((a, b) => b.ukeire.reduce((s, x) => s + x.remaining, 0) - a.ukeire.reduce((s, x) => s + x.remaining, 0));
     return { shanten: best, discards: options };
   }
 
-  function improvingDraws(counts, melds, sanma, visibleCounts = []) {
-    const baseShanten = effectiveShanten(counts, melds, sanma, visibleCounts);
+  function improvingDraws(counts, melds, sanma, visibleCounts = [], kita = 0) {
+    const baseShanten = effectiveShanten(counts, melds, sanma, visibleCounts, kita);
     const fixed = fixedCounts(melds, false);
     const improvements = [];
     for (let drawId = 0; drawId < 34; drawId++) {
       const visible = visibleCounts[drawId] || 0;
-      if (!allowedTile(drawId, sanma) || counts[drawId] + fixed[drawId] + visible >= 4) continue;
+      const kitaCopies = kitaPhysicalCount(drawId, sanma, kita);
+      if (!allowedTile(drawId, sanma) || counts[drawId] + fixed[drawId] + visible + kitaCopies >= 4) continue;
       const drawn = addGroup(counts, [drawId]);
       const best = { shanten: Infinity, discards: [] };
       for (let discardId = 0; discardId < 34; discardId++) {
@@ -644,11 +654,11 @@
         afterDiscard[discardId]--;
         const nextVisible = visibleCounts.slice();
         nextVisible[discardId] = (nextVisible[discardId] || 0) + 1;
-        const nextShanten = effectiveShanten(afterDiscard, melds, sanma, nextVisible);
+        const nextShanten = effectiveShanten(afterDiscard, melds, sanma, nextVisible, kita);
         if (nextShanten < best.shanten) { best.shanten = nextShanten; best.discards.length = 0; }
         if (nextShanten === best.shanten && !best.discards.includes(discardId)) best.discards.push(discardId);
       }
-      if (best.shanten < baseShanten) improvements.push({ id: drawId, remaining: 4 - counts[drawId] - fixed[drawId] - visible, shanten: best.shanten, discards: best.discards });
+      if (best.shanten < baseShanten) improvements.push({ id: drawId, remaining: 4 - counts[drawId] - fixed[drawId] - visible - kitaCopies, shanten: best.shanten, discards: best.discards });
     }
     improvements.sort((a, b) => b.remaining - a.remaining || a.shanten - b.shanten);
     return { shanten: baseShanten, improvements };
@@ -809,7 +819,7 @@
       if (!names.has(route.name) || (route.kanCandidates || []).length) continue;
       if (fixed.some((count, id) => count > route.target[id])) continue;
       if (route.target.some((count, id) =>
-        fixedPhysical[id] + (indicators[id] || 0) + count - fixed[id] > 4)) continue;
+        fixedPhysical[id] + (indicators[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + count - fixed[id] > 4)) continue;
       let shared = 0;
       for (let id = 0; id < 34; id++) shared += Math.min(current[id], route.target[id]);
       const pureWaitRoute = route.name === '纯正九莲宝灯';
@@ -835,6 +845,7 @@
     const indicators = options.indicatorCounts || [];
     const current = addCounts(counts, fixed);
     const physical = addCounts(addCounts(counts, fixedPhysical), indicators);
+    physical[30] += kitaPhysicalCount(30, sanma, options.kita);
     const effective = total(counts) + melds.length * 3;
     const activeCount = Array.from({ length: 34 }, (_, id) => id).filter((id) => allowedTile(id, sanma)).length;
     const kokushiTiles = Array.from({ length: 34 }, (_, id) => id).filter((id) => allowedTile(id, sanma) && isYaochu(id));
@@ -887,7 +898,7 @@
     const candidates = new Map();
     for (const route of routes) {
       if (fixed.some((count, id) => count > route.target[id])) continue;
-      if (route.target.some((count, id) => fixedPhysical[id] + (indicators[id] || 0) + count - fixed[id] + ((route.kanCandidates || []).includes(id) ? 1 : 0) > 4)) continue;
+      if (route.target.some((count, id) => fixedPhysical[id] + (indicators[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + count - fixed[id] + ((route.kanCandidates || []).includes(id) ? 1 : 0) > 4)) continue;
       if (route.target.some((count, id) => count && !allowedTile(id, sanma))) continue;
       const pureWaitRoute = route.name === '纯正九莲宝灯';
       let best = null;
@@ -1071,6 +1082,7 @@
     const concealed = target.map((count, id) => count - fixedStructural[id]);
     const physical = addCounts(concealed, fixedPhysical);
     let han = options.sanma ? (options.kita || 0) : 0;
+    han += kitaDoraHan(options);
     for (let id = 0; id < 34; id++) han += physical[id] * (options.doraCounts[id] || 0);
     if (Array.isArray(options.redFiveCounts)) {
       for (let suit = 0; suit < 3; suit++) {
@@ -1158,12 +1170,12 @@
           if (!counts[id]) continue;
           const after = counts.slice(); after[id]--;
           const value = shanten(after, melds.length, sanma);
-          const draws = regularUkeire(after, melds, sanma, value, visibleCounts);
+          const draws = regularUkeire(after, melds, sanma, value, visibleCounts, options.kita);
           states.push({ id, shanten: value, draws });
         }
       } else {
         const value = shanten(counts, melds.length, sanma);
-        states.push({ id: null, shanten: value, draws: regularUkeire(counts, melds, sanma, value, visibleCounts) });
+        states.push({ id: null, shanten: value, draws: regularUkeire(counts, melds, sanma, value, visibleCounts, options.kita) });
       }
       states.sort((a, b) => a.shanten - b.shanten || b.draws.reduce((sum, item) => sum + item.remaining, 0) - a.draws.reduce((sum, item) => sum + item.remaining, 0));
       const best = states[0];
@@ -1185,12 +1197,13 @@
     }
     const concealedSlots = 14 - total(fixedStructural);
     let fixedDora = sanma ? (options.kita || 0) : 0;
+    fixedDora += kitaDoraHan(options);
     for (let id = 0; id < 34; id++) fixedDora += fixedPhysical[id] * (options.doraCounts[id] || 0);
     const doraValues = [];
     const maxDoraValue = Math.max(0, ...options.doraCounts);
     for (let id = 0; id < 34; id++) {
       if (!allowedTile(id, sanma)) continue;
-      for (let copy = fixedPhysical[id] + (visibleCounts[id] || 0); copy < 4; copy++) doraValues.push(options.doraCounts[id] || 0);
+      for (let copy = fixedPhysical[id] + (visibleCounts[id] || 0) + kitaPhysicalCount(id, sanma, options.kita); copy < 4; copy++) doraValues.push(options.doraCounts[id] || 0);
     }
     doraValues.sort((a, b) => b - a);
     const maximumDora = fixedDora + doraValues.slice(0, concealedSlots).reduce((sum, han) => sum + han, 0) + 3;
@@ -1203,6 +1216,7 @@
     const effective = total(counts) + melds.length * 3;
     const current = addCounts(counts, fixedStructural);
     const physical = addCounts(addCounts(counts, fixedPhysical), visibleCounts);
+    physical[30] += kitaPhysicalCount(30, sanma, options.kita);
     const states = [];
     if (discard && effective === 14) {
       for (let id = 0; id < 34; id++) {
@@ -1238,7 +1252,12 @@
     const target = fixedStructural.slice();
     const doraCapacities = Array(maxDoraValue + 1).fill(0);
     for (let id = 0; id < 34; id++) {
-      if (allowedTile(id, sanma)) doraCapacities[options.doraCounts[id] || 0] += Math.max(0, 4 - fixedPhysical[id] - (visibleCounts[id] || 0));
+      if (allowedTile(id, sanma)) {
+        doraCapacities[options.doraCounts[id] || 0] += Math.max(
+          0,
+          4 - fixedPhysical[id] - (visibleCounts[id] || 0) - kitaPhysicalCount(id, sanma, options.kita)
+        );
+      }
     }
     let targetDora = fixedDora;
     const distanceMetrics = states.map((state) => {
@@ -1338,7 +1357,7 @@
       for (const metric of distanceMetrics) {
         const gains = [];
         for (const id of active) {
-          if (target[id] || fixedPhysical[id] + (visibleCounts[id] || 0) + 2 > 4) continue;
+          if (target[id] || fixedPhysical[id] + (visibleCounts[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + 2 > 4) continue;
           gains.push(Math.min(2, metric.state.after[id]));
         }
         gains.sort((a, b) => b - a);
@@ -1395,7 +1414,7 @@
       if (doraUpperBound(remainingSlots) < 1 || distanceLowerBound(remainingSlots) > Math.min(maxShanten, best ? best.shanten : Infinity)) return;
       if (remaining === 0) {
         for (let pair = 0; pair < 34; pair++) {
-          if (!allowedTile(pair, sanma) || target[pair] + 2 > 4 || fixedPhysical[pair] + (visibleCounts[pair] || 0) + target[pair] - fixedStructural[pair] + 2 > 4) continue;
+          if (!allowedTile(pair, sanma) || target[pair] + 2 > 4 || fixedPhysical[pair] + (visibleCounts[pair] || 0) + kitaPhysicalCount(pair, sanma, options.kita) + target[pair] - fixedStructural[pair] + 2 > 4) continue;
           changeTarget(pair, 2);
           considerTarget();
           changeTarget(pair, -2);
@@ -1408,7 +1427,7 @@
         for (const id of group) groupCounts[id]++;
         if (groupCounts.some((amount, id) => amount > 0 && (
           target[id] + amount > 4 ||
-          fixedPhysical[id] + (visibleCounts[id] || 0) + target[id] - fixedStructural[id] + amount > 4
+          fixedPhysical[id] + (visibleCounts[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + target[id] - fixedStructural[id] + amount > 4
         ))) continue;
         for (const id of group) changeTarget(id, 1);
         chooseGroups(index, remaining - 1);
@@ -1433,7 +1452,7 @@
         if (remaining === 0) { considerTarget(); return; }
         for (let index = start; index < searchActive.length; index++) {
           const id = searchActive[index];
-          if (target[id] + 2 > 4 || fixedPhysical[id] + (visibleCounts[id] || 0) + target[id] - fixedStructural[id] + 2 > 4) continue;
+          if (target[id] + 2 > 4 || fixedPhysical[id] + (visibleCounts[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + target[id] - fixedStructural[id] + 2 > 4) continue;
           changeTarget(id, 2);
           choosePairs(index + 1, remaining - 1);
           changeTarget(id, -2);
@@ -1468,6 +1487,7 @@
     const fixedPhysical = fixedCounts(melds, false);
     const indicators = options.indicatorCounts || [];
     const physical = addCounts(addCounts(counts, fixedPhysical), indicators);
+    physical[30] += kitaPhysicalCount(30, sanma, options.kita);
     const effective = total(counts) + melds.length * 3;
     const states = [];
     if (discard && effective === 14) {
@@ -1495,7 +1515,7 @@
             const target = fixedTarget.slice();
             target[triplet] += 3;
             target[pair] += 2;
-            if (target.some((count, id) => fixedPhysical[id] + (indicators[id] || 0) + count - fixedTarget[id] > 4)) continue;
+            if (target.some((count, id) => fixedPhysical[id] + (indicators[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + count - fixedTarget[id] > 4)) continue;
             let shared = 0;
             for (let id = 0; id < 34; id++) shared += Math.min(state.after[id], target[id]);
             const draws = [];
@@ -1575,7 +1595,7 @@
       : 4 - state.available[id];
     const fixedShared = fixedAnkanIds.length * 3;
     function bestTripletSet(state, excluded, size) {
-      const choices = active.filter((id) => !excluded.has(id) && fixedPhysical[id] + (indicators[id] || 0) + 3 <= 4).map((id) => ({
+      const choices = active.filter((id) => !excluded.has(id) && fixedPhysical[id] + (indicators[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) + 3 <= 4).map((id) => ({
         id,
         shared: matchCount(state, id, 3, true),
         draws: drawCount(state, id, 3)
@@ -1597,7 +1617,7 @@
       let stateBest = null;
       const tiedPairs = [];
       for (const pair of active) {
-        if (fixedPhysical[pair] + (indicators[pair] || 0) + 2 > 4) continue;
+        if (fixedPhysical[pair] + (indicators[pair] || 0) + kitaPhysicalCount(pair, sanma, options.kita) + 2 > 4) continue;
         const chosen = bestTripletSet(state, new Set([pair]), needTriplets);
         if (chosen.ids.length !== needTriplets) continue;
         const pairShared = matchCount(state, pair, 2);
@@ -1724,6 +1744,10 @@
       group.id = normalizedDraws[0] ? normalizedDraws[0].id : null;
     }
     const rows = [...groups.values()];
+    rows.sort((a, b) => a.shanten - b.shanten ||
+      Number(a.route === '累计役满') - Number(b.route === '累计役满') ||
+      (b.remaining || 0) - (a.remaining || 0) ||
+      String(a.route || '').localeCompare(String(b.route || '')));
     const pureNineGates = new Set(rows.filter((route) => route.route === '纯正九莲宝灯').map((route) => {
       const discards = [...(route.discards || [])].sort((a, b) => a - b);
       return JSON.stringify([route.shanten, discards, Boolean(route.anyDraw), route.draws]);
@@ -1776,7 +1800,7 @@
     const waits = [];
     const indicators = options.indicatorCounts || [];
     for (let id = 0; id < 34; id++) {
-      if (!allowedTile(id, options.sanma) || counts[id] + fixed[id] + (indicators[id] || 0) >= 4) continue;
+      if (!allowedTile(id, options.sanma) || counts[id] + fixed[id] + (indicators[id] || 0) + kitaPhysicalCount(id, options.sanma, options.kita) >= 4) continue;
       const next = addGroup(counts, [id]);
       const analysis = analyzeScore(next, melds, { ...options, preWinCounts: counts, winningTile: id });
       if (!analysis.complete) continue;
@@ -1789,7 +1813,21 @@
   function yakumanDistance(counts, melds, sanma, discard, options) {
     const distance = yakumanDistanceInternal(counts, melds, sanma, discard, options);
     if (!distance || !distance.improvements) return distance;
-    return { ...distance, improvements: normalizeYakumanImprovements(distance.improvements) };
+    const improvements = normalizeYakumanImprovements(distance.improvements);
+    const liveImprovements = improvements.filter((route) => {
+      const remaining = Number.isFinite(route.remaining)
+        ? route.remaining
+        : (route.draws || []).reduce((sum, draw) => sum + (draw.remaining || 0), 0);
+      return route.shanten < 0 || remaining > 0;
+    });
+    const bestLiveShanten = liveImprovements.length
+      ? Math.min(...liveImprovements.map((route) => route.shanten))
+      : null;
+    const shanten = Number.isFinite(distance.shanten) && bestLiveShanten !== null &&
+      distance.shanten < bestLiveShanten && !distance.yakumanOpportunity
+      ? bestLiveShanten
+      : distance.shanten;
+    return { ...distance, shanten, improvements };
   }
 
   function countedYakumanKanDistance(counts, melds, sanma, options, maxShanten) {
@@ -1801,8 +1839,8 @@
     const routes = [];
     for (let id = 0; id < 34; id++) {
       if (!allowedTile(id, sanma)) continue;
-      const heldKan = counts[id] === 4 && fixed[id] === 0 && !(indicators[id] || 0);
-      const drawKan = counts[id] === 3 && counts[id] + fixed[id] + (indicators[id] || 0) < 4;
+      const heldKan = counts[id] === 4 && fixed[id] === 0 && !(indicators[id] || 0) && !kitaPhysicalCount(id, sanma, options.kita);
+      const drawKan = counts[id] === 3 && counts[id] + fixed[id] + (indicators[id] || 0) + kitaPhysicalCount(id, sanma, options.kita) < 4;
       if (!heldKan && !drawKan) continue;
       if (existingKans < 2 && !options.doraCounts[id]) continue;
       const actionShanten = drawKan ? 1 : 0;
@@ -1810,7 +1848,7 @@
       const nextMelds = melds.concat({ type: 'ankan', tiles: [id, id, id, id] });
       const afterKan = countedYakumanDistance(nextCounts, nextMelds, sanma, false, options, Math.max(0, maxShanten - actionShanten));
       if (!afterKan) continue;
-      const remaining = 4 - counts[id] - fixed[id] - (indicators[id] || 0);
+      const remaining = 4 - counts[id] - fixed[id] - (indicators[id] || 0) - kitaPhysicalCount(id, sanma, options.kita);
       for (const route of afterKan.routes || []) {
         if (route.name !== '累计役满' || route.shanten + actionShanten > maxShanten) continue;
         routes.push({
@@ -1834,7 +1872,7 @@
   function yakumanDistanceInternal(counts, melds, sanma, discard, options) {
     const effective = total(counts) + melds.length * 3;
     const baseOptions = { sanma, doraCounts: Array(34).fill(0), indicatorCounts: Array(34).fill(0), redCount: 0, kita: 0, roundWind: 27, seatWind: 27, ...options };
-    const routeKey = `${counts.join(',')}|${melds.map((meld) => `${meld.type}:${meld.tiles.join('.')}`).join('|')}|${sanma}|${discard}|${(baseOptions.indicatorCounts || []).join(',')}`;
+    const routeKey = `${counts.join(',')}|${melds.map((meld) => `${meld.type}:${meld.tiles.join('.')}`).join('|')}|${sanma}|${discard}|${(baseOptions.indicatorCounts || []).join(',')}|${baseOptions.kita || 0}`;
     let suuankou = suuankouDistanceCache.get(routeKey);
     if (suuankou === undefined) {
       suuankou = suuankouDistance(counts, melds, sanma, discard, baseOptions);
@@ -1874,7 +1912,7 @@
       baseOptions,
       Math.min(6, directRoutes && directRoutes.routes.length >= 3 ? directRoutes.routes[2].shanten : 6)
     );
-    const combined = combineRouteDistances(suuankou, direct, counted, countedKan);
+    let combined = combineRouteDistances(suuankou, direct, counted, countedKan);
     if (!combined && !currentWaits.length && !currentDiscardWaits.length) {
       return { shanten: null, missing: null, discards: [], improvements: [], routes: [], impossible: true };
     }
@@ -1904,7 +1942,7 @@
         const afterDiscard = copyCounts(counts);
         afterDiscard[id]--;
         const regularShanten = shanten(afterDiscard, melds.length, sanma);
-        const ukeire = regularUkeire(afterDiscard, melds, sanma, regularShanten, indicators)
+        const ukeire = regularUkeire(afterDiscard, melds, sanma, regularShanten, indicators, baseOptions.kita)
           .reduce((sum, draw) => sum + draw.remaining, 0);
         return { id, regularShanten, ukeire };
       });
@@ -2007,8 +2045,9 @@
         }
       }
     }
-    if (effective === 14 && discard && combined && !currentDiscardWaits.length &&
-        combined.shanten === 2 && (combined.routes || []).some((route) => route.name === '四暗刻' && route.shanten === 2)) {
+    const hasTwoShantenSuuankou = combined &&
+      (combined.routes || []).some((route) => route.name === '四暗刻' && route.shanten === 2);
+    if (effective === 14 && discard && combined && !currentDiscardWaits.length && hasTwoShantenSuuankou) {
       const candidates = [];
       const indicators = baseOptions.indicatorCounts || [];
       for (let discardId = 0; discardId < 34; discardId++) {
@@ -2019,26 +2058,35 @@
         nextIndicators[discardId] = (nextIndicators[discardId] || 0) + 1;
         const nextOptions = { ...baseOptions, indicatorCounts: nextIndicators };
         const nextDistance = yakumanDistance(afterDiscard, melds, sanma, false, nextOptions);
-        if (nextDistance.shanten >= combined.shanten) continue;
+        const tankiImprovements = (nextDistance.improvements || []).filter((route) => route.route === '四暗刻单骑');
+        if (nextDistance.shanten >= combined.shanten && !tankiImprovements.length) continue;
         const regularShanten = shanten(afterDiscard, melds.length, sanma);
-        const ukeire = regularUkeire(afterDiscard, melds, sanma, regularShanten, nextIndicators)
+        const ukeire = regularUkeire(afterDiscard, melds, sanma, regularShanten, nextIndicators, baseOptions.kita)
           .reduce((sum, draw) => sum + draw.remaining, 0);
-        candidates.push({ discardId, distance: nextDistance, regularShanten, ukeire });
+        candidates.push({ discardId, distance: nextDistance, regularShanten, ukeire, tankiImprovements });
       }
       if (candidates.length) {
-        const bestShanten = Math.min(...candidates.map((item) => item.distance.shanten));
-        const bestRegularShanten = Math.min(...candidates
-          .filter((item) => item.distance.shanten === bestShanten)
-          .map((item) => item.regularShanten));
-        const regularCandidates = candidates.filter((item) =>
-          item.distance.shanten === bestShanten && item.regularShanten === bestRegularShanten);
-        const bestUkeire = Math.max(...regularCandidates.map((item) => item.ukeire));
-        const bestCandidates = regularCandidates.filter((item) => item.ukeire === bestUkeire);
-        combined.shanten = bestShanten;
-        combined.missing = bestShanten + 1;
-        combined.discards = bestCandidates.map((item) => item.discardId);
-        combined.improvements = bestCandidates.flatMap((item) => item.distance.improvements
-          .filter((route) => route.shanten === bestShanten));
+        if (combined.shanten <= 1) {
+          const tankiRows = candidates.flatMap((item) => item.tankiImprovements.map((route) => ({
+            ...route,
+            discards: [...new Set([...(route.discards || []), item.discardId])]
+          })));
+          if (tankiRows.length) combined.improvements = [...combined.improvements, ...tankiRows];
+        } else {
+          const bestShanten = Math.min(...candidates.map((item) => item.distance.shanten));
+          const bestRegularShanten = Math.min(...candidates
+            .filter((item) => item.distance.shanten === bestShanten)
+            .map((item) => item.regularShanten));
+          const regularCandidates = candidates.filter((item) =>
+            item.distance.shanten === bestShanten && item.regularShanten === bestRegularShanten);
+          const bestUkeire = Math.max(...regularCandidates.map((item) => item.ukeire));
+          const bestCandidates = regularCandidates.filter((item) => item.ukeire === bestUkeire);
+          combined.shanten = bestShanten;
+          combined.missing = bestShanten + 1;
+          combined.discards = bestCandidates.map((item) => item.discardId);
+          combined.improvements = bestCandidates.flatMap((item) => item.distance.improvements
+            .filter((route) => route.shanten === bestShanten));
+        }
       }
     }
     const oneDrawTankiCandidate = combined && combined.shanten === 2 &&
@@ -2111,7 +2159,7 @@
     const fixed = fixedCounts(melds, false);
     const indicators = options.indicatorCounts || [];
     for (let id = 0; id < 34; id++) {
-      if (!allowedTile(id, options.sanma) || counts[id] + fixed[id] + (indicators[id] || 0) >= 4) continue;
+      if (!allowedTile(id, options.sanma) || counts[id] + fixed[id] + (indicators[id] || 0) + kitaPhysicalCount(id, options.sanma, options.kita) >= 4) continue;
       const next = addGroup(counts, [id]);
       const suit = id < 27 && id % 9 === 4 ? Math.floor(id / 9) : -1;
       const redAvailable = suit >= 0 && options.redFiveAvailable && options.redFiveAvailable[suit];
@@ -2146,7 +2194,7 @@
     const fixed = fixedCounts(melds, false);
     const indicators = options.indicatorCounts || [];
     for (let id = 0; id < 34; id++) {
-      if (!allowedTile(id, options.sanma) || counts[id] + fixed[id] + (indicators[id] || 0) >= 4) continue;
+      if (!allowedTile(id, options.sanma) || counts[id] + fixed[id] + (indicators[id] || 0) + kitaPhysicalCount(id, options.sanma, options.kita) >= 4) continue;
       const next = addGroup(counts, [id]);
       const decomps = winningDecompositions(next, melds, options.sanma);
       if (!decomps.length) continue;
@@ -2161,8 +2209,10 @@
     const effective = tiles.length + melds.length * 3;
     if (effective !== 13 && effective !== 14) errors.push(`当前有效牌数为 ${effective}，请调整为 13 张或 14 张。`);
     if (options.sanma && melds.some((meld) => meld.type === 'chi')) errors.push('三人麻将不允许吃。');
+    if ((options.kita || 0) < 0 || (options.kita || 0) > 4) errors.push('拔北数量不能超过四张。');
     const physical = countsFromTiles(tiles);
     for (const meld of melds) for (const id of meld.tiles) physical[id]++;
+    if (options.sanma) physical[30] += options.kita || 0;
     const indicators = options.indicatorCounts || [];
     const doraCounts = options.doraCounts || [];
     const doraTotal = doraCounts.reduce((sum, count) => sum + (count || 0), 0);

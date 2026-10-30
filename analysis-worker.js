@@ -14,7 +14,7 @@ self.onmessage = (event) => {
       if (analysis.complete) {
         self.postMessage({ revision, valid: true, kind: 'complete', analysis });
       } else {
-        const info = MahjongCore.bestDiscards(tiles, melds, options.sanma, options.indicatorCounts);
+        const info = MahjongCore.bestDiscards(tiles, melds, options.sanma, options.indicatorCounts, options.kita);
         self.postMessage({ revision, valid: true, kind: 'discard', info });
       }
       return;
@@ -23,7 +23,7 @@ self.onmessage = (event) => {
     if (waits.length) {
       self.postMessage({ revision, valid: true, kind: 'tenpai', counts, waits });
     } else {
-      const info = MahjongCore.improvingDraws(counts, melds, options.sanma, options.indicatorCounts);
+      const info = MahjongCore.improvingDraws(counts, melds, options.sanma, options.indicatorCounts, options.kita);
       self.postMessage({ revision, valid: true, kind: 'improvement', info });
     }
   } catch (error) {

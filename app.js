@@ -51,7 +51,7 @@
 
   function tileTooltipLabel(id, red = false) {
     if (id >= 27) return Core.tileLabel(id);
-    const suitNames = ['万', '筒', '索'];
+    const suitNames = ['万', '饼', '索'];
     const rankNames = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
     const rank = red ? '赤五' : rankNames[id % 9];
     return `${rank}${suitNames[Math.floor(id / 9)]}`;
@@ -78,13 +78,10 @@
     const counts = Array(34).fill(0);
     for (const tile of state.tiles) counts[tile.id]++;
     for (const meld of state.melds) for (const id of meld.tiles) counts[id]++;
+    if (Number(playerCountEl.value) === 3) counts[30] += state.kita;
     const indicators = indicatorCountsFromDora(Number(playerCountEl.value) === 3);
     for (let id = 0; id < 34; id++) counts[id] += indicators[id];
     return counts;
-  }
-
-  function kitaNorthCount(id) {
-    return Number(playerCountEl.value) === 3 && id === 30 ? state.kita : 0;
   }
 
   function doraTotal() {
@@ -189,7 +186,7 @@
     const redUsed = red && (state.tiles.some((tile) => tile.red && tile.id === id) || state.melds.some((meld) => meld.redTileId === id));
     if (purpose === 'hand') {
       const physical = fixedPhysicalCounts();
-      button.disabled = effectiveCount() >= 14 || physical[id] + kitaNorthCount(id) >= 4 || redUsed || (Number(playerCountEl.value) === 3 && !Core.allowedTile(id, true));
+      button.disabled = effectiveCount() >= 14 || physical[id] >= 4 || redUsed || (Number(playerCountEl.value) === 3 && !Core.allowedTile(id, true));
       button.addEventListener('click', () => addTile(id, red));
     } else if (purpose === 'dora') {
       const sanma = Number(playerCountEl.value) === 3;
@@ -224,7 +221,7 @@
   function addTile(id, red) {
     if (effectiveCount() >= 14) return;
     const physical = fixedPhysicalCounts();
-    if (physical[id] + kitaNorthCount(id) >= 4) return;
+    if (physical[id] >= 4) return;
     if (Number(playerCountEl.value) === 3 && !Core.allowedTile(id, true)) return;
     if (red && (state.tiles.some((tile) => tile.red && tile.id === id) || state.melds.some((meld) => meld.redTileId === id))) return;
     state.tiles.push({ id, red: Boolean(red) });
@@ -1075,7 +1072,7 @@
     for (let suit = 0; suit < 3; suit++) {
       const chuuren = waits.filter((wait) => wait.id >= suit * 9 && wait.id < suit * 9 + 9 && yakumanHasLabel(wait, '纯正九莲宝灯'));
       if (!chuuren.length) continue;
-      groups.push({ ...chuuren[0], anyWait: true, anyAsset: `any${Core.SUITS[suit]}.png`, anyLabel: `任意${['万子', '筒子', '索子'][suit]}`, groupWaits: chuuren });
+      groups.push({ ...chuuren[0], anyWait: true, anyAsset: `any${Core.SUITS[suit]}.png`, anyLabel: `任意${['万子', '饼子', '索子'][suit]}`, groupWaits: chuuren });
       chuuren.forEach((wait) => used.add(wait));
     }
     return { groups, remaining: waits.filter((wait) => !used.has(wait)) };
@@ -1138,12 +1135,12 @@
     if (validation.effective === 14) {
       const analysis = Core.analyzeScore(counts, state.melds, opts);
       if (analysis.complete) renderAnalysisResult({ valid: true, kind: 'complete', analysis }, opts, yakumanMode);
-      else renderAnalysisResult({ valid: true, kind: 'discard', info: Core.bestDiscards(state.tiles, state.melds, opts.sanma, opts.indicatorCounts) }, opts, yakumanMode);
+      else renderAnalysisResult({ valid: true, kind: 'discard', info: Core.bestDiscards(state.tiles, state.melds, opts.sanma, opts.indicatorCounts, opts.kita) }, opts, yakumanMode);
       return;
     }
     const waits = Core.findWaits(counts, state.melds, opts);
     if (waits.length) renderAnalysisResult({ valid: true, kind: 'tenpai', counts, waits }, opts, yakumanMode);
-    else renderAnalysisResult({ valid: true, kind: 'improvement', info: Core.improvingDraws(counts, state.melds, opts.sanma, opts.indicatorCounts) }, opts, yakumanMode);
+    else renderAnalysisResult({ valid: true, kind: 'improvement', info: Core.improvingDraws(counts, state.melds, opts.sanma, opts.indicatorCounts, opts.kita) }, opts, yakumanMode);
   }
 
   function refreshAnalysis() {
